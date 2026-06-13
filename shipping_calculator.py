@@ -11,7 +11,19 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 
-VOLUME_FACTOR = 6000
+EXPRESS_COMPANIES: Dict[str, Dict] = {
+    "顺丰": {"name": "顺丰速运", "volume_factor": 6000},
+    "德邦": {"name": "德邦快递", "volume_factor": 5000},
+    "中通": {"name": "中通快递", "volume_factor": 6000},
+    "圆通": {"name": "圆通速递", "volume_factor": 6000},
+    "申通": {"name": "申通快递", "volume_factor": 6000},
+    "京东": {"name": "京东物流", "volume_factor": 6000},
+    "极兔": {"name": "极兔速递", "volume_factor": 6000},
+    "EMS": {"name": "EMS", "volume_factor": 6000},
+}
+
+DEFAULT_COMPANY = "顺丰"
+VOLUME_FACTOR = EXPRESS_COMPANIES[DEFAULT_COMPANY]["volume_factor"]
 
 
 @dataclass
@@ -61,8 +73,20 @@ CITY_TO_ZONE: Dict[str, str] = {
 
 
 class ShippingCalculator:
-    def __init__(self, volume_factor: int = VOLUME_FACTOR):
+    def __init__(self, volume_factor: int = VOLUME_FACTOR, company: str = DEFAULT_COMPANY):
+        self.company = company
         self.volume_factor = volume_factor
+
+    @classmethod
+    def for_company(cls, company: str) -> "ShippingCalculator":
+        if company not in EXPRESS_COMPANIES:
+            raise ValueError(
+                f"不支持的快递公司: {company}。支持的公司: {list(EXPRESS_COMPANIES.keys())}"
+            )
+        return cls(
+            volume_factor=EXPRESS_COMPANIES[company]["volume_factor"],
+            company=company,
+        )
 
     def resolve_zone(self, destination: str) -> Optional[str]:
         if destination in ZONE_RATES:
@@ -107,6 +131,9 @@ class ShippingCalculator:
         total_cost = round(total_cost, 2)
 
         return {
+            "company": self.company,
+            "company_name": EXPRESS_COMPANIES.get(self.company, {}).get("name", self.company),
+            "volume_factor": self.volume_factor,
             "destination": destination,
             "zone": zone,
             "package": {
@@ -127,7 +154,6 @@ class ShippingCalculator:
 
 
 def main():
-    calc = ShippingCalculator()
     examples = [
         ("上海", 30, 20, 10, 2),
         ("北京", 50, 40, 30, 3),
@@ -141,17 +167,40 @@ def main():
     print("快递运费计算服务 - 示例")
     print("=" * 80)
 
-    for dest, l, w, h, wt in examples:
-        try:
+    print(f"\n{'='*40}")
+    print("对比: 顺丰 vs 德邦 (体积重系数差异)")
+    print(f"{'='*40}")
+    compare_cases = [
+        (50, 40, 30, 3, "北京"),
+        (60, 50, 40, 8, "上海"),
+    ]
+    for l, w, h, wt, dest in compare_cases:
+        print(f"\n包裹: {l}×{w}×{h} cm, 实际重量 {wt} kg, 目的地 {dest}")
+        print(f"  体积: {l*w*h:.0f} cm³")
+        for company_name in ["顺丰", "德邦"]:
+            calc = ShippingCalculator.for_company(company_name)
             result = calc.calculate(dest, l, w, h, wt)
-            print(f"\n目的地: {dest}  |  区域: {result['zone']}")
-            print(f"  尺寸: {l}×{w}×{h} cm  |  体积: {l*w*h:.0f} cm³")
-            print(f"  实际重量: {wt} kg  |  体积重: {result['package']['volume_weight_kg']} kg")
-            print(f"  计费重量: {result['package']['chargeable_weight_kg']} kg")
-            print(f"  首重: {result['rate']['first_weight']}元/{result['rate']['first_kg']}kg  |  续重: {result['rate']['additional_per_kg']}元/kg")
-            print(f"  总运费: ¥{result['total_cost']}")
-        except ValueError as e:
-            print(f"\n目的地: {dest} - 错误: {e}")
+            vf = result["volume_factor"]
+            vw = result["package"]["volume_weight_kg"]
+            cw = result["package"]["chargeable_weight_kg"]
+            print(f"  {company_name}(系数{vf}): 体积重={vw}kg, 计费重={cw}kg, 运费=¥{result['total_cost']}")
+
+    for company_name in ["顺丰", "德邦"]:
+        print(f"\n{'='*40}")
+        print(f"快递公司: {company_name} (体积重系数: {EXPRESS_COMPANIES[company_name]['volume_factor']})")
+        print(f"{'='*40}")
+        calc = ShippingCalculator.for_company(company_name)
+        for dest, l, w, h, wt in examples:
+            try:
+                result = calc.calculate(dest, l, w, h, wt)
+                print(f"\n目的地: {dest}  |  区域: {result['zone']}")
+                print(f"  尺寸: {l}×{w}×{h} cm  |  体积: {l*w*h:.0f} cm³")
+                print(f"  实际重量: {wt} kg  |  体积重: {result['package']['volume_weight_kg']} kg")
+                print(f"  计费重量: {result['package']['chargeable_weight_kg']} kg")
+                print(f"  首重: {result['rate']['first_weight']}元/{result['rate']['first_kg']}kg  |  续重: {result['rate']['additional_per_kg']}元/kg")
+                print(f"  总运费: ¥{result['total_cost']}")
+            except ValueError as e:
+                print(f"\n目的地: {dest} - 错误: {e}")
 
     print("\n" + "=" * 80)
 
