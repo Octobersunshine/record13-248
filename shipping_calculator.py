@@ -44,20 +44,30 @@ class Package:
         return max(self.weight, self.volume_weight(factor))
 
 
-ZONE_RATES: Dict[str, Dict[str, float]] = {
-    "本地": {"zone": "本地", "first_weight": 8.0, "first_kg": 1.0, "additional_per_kg": 2.0},
-    "省内": {"zone": "省内", "first_weight": 12.0, "first_kg": 1.0, "additional_per_kg": 3.0},
-    "华东": {"zone": "华东", "first_weight": 15.0, "first_kg": 1.0, "additional_per_kg": 5.0},
-    "华北": {"zone": "华北", "first_weight": 18.0, "first_kg": 1.0, "additional_per_kg": 6.0},
-    "华中": {"zone": "华中", "first_weight": 16.0, "first_kg": 1.0, "additional_per_kg": 5.5},
-    "华南": {"zone": "华南", "first_weight": 16.0, "first_kg": 1.0, "additional_per_kg": 5.5},
-    "西南": {"zone": "西南", "first_weight": 20.0, "first_kg": 1.0, "additional_per_kg": 7.0},
-    "西北": {"zone": "西北", "first_weight": 22.0, "first_kg": 1.0, "additional_per_kg": 8.0},
-    "东北": {"zone": "东北", "first_weight": 20.0, "first_kg": 1.0, "additional_per_kg": 7.5},
-    "新疆西藏": {"zone": "新疆西藏", "first_weight": 30.0, "first_kg": 1.0, "additional_per_kg": 15.0},
-    "港澳台": {"zone": "港澳台", "first_weight": 35.0, "first_kg": 0.5, "additional_per_kg": 20.0},
-    "国际-东南亚": {"zone": "国际-东南亚", "first_weight": 50.0, "first_kg": 0.5, "additional_per_kg": 30.0},
-    "国际-欧美": {"zone": "国际-欧美", "first_weight": 80.0, "first_kg": 0.5, "additional_per_kg": 50.0},
+ZONE_RATES: Dict[str, Dict] = {
+    "本地": {"zone": "本地", "first_weight": 8.0, "first_kg": 1.0, "additional_per_kg": 2.0, "remote_surcharge": 0.0},
+    "省内": {"zone": "省内", "first_weight": 12.0, "first_kg": 1.0, "additional_per_kg": 3.0, "remote_surcharge": 0.0},
+    "华东": {"zone": "华东", "first_weight": 15.0, "first_kg": 1.0, "additional_per_kg": 5.0, "remote_surcharge": 0.0},
+    "华北": {"zone": "华北", "first_weight": 18.0, "first_kg": 1.0, "additional_per_kg": 6.0, "remote_surcharge": 0.0},
+    "华中": {"zone": "华中", "first_weight": 16.0, "first_kg": 1.0, "additional_per_kg": 5.5, "remote_surcharge": 0.0},
+    "华南": {"zone": "华南", "first_weight": 16.0, "first_kg": 1.0, "additional_per_kg": 5.5, "remote_surcharge": 0.0},
+    "西南": {"zone": "西南", "first_weight": 20.0, "first_kg": 1.0, "additional_per_kg": 7.0, "remote_surcharge": 0.0},
+    "西北": {"zone": "西北", "first_weight": 22.0, "first_kg": 1.0, "additional_per_kg": 8.0, "remote_surcharge": 0.0},
+    "东北": {"zone": "东北", "first_weight": 20.0, "first_kg": 1.0, "additional_per_kg": 7.5, "remote_surcharge": 0.0},
+    "新疆西藏": {"zone": "新疆西藏", "first_weight": 30.0, "first_kg": 1.0, "additional_per_kg": 15.0, "remote_surcharge": 20.0},
+    "港澳台": {"zone": "港澳台", "first_weight": 35.0, "first_kg": 0.5, "additional_per_kg": 20.0, "remote_surcharge": 10.0},
+    "国际-东南亚": {"zone": "国际-东南亚", "first_weight": 50.0, "first_kg": 0.5, "additional_per_kg": 30.0, "remote_surcharge": 25.0},
+    "国际-欧美": {"zone": "国际-欧美", "first_weight": 80.0, "first_kg": 0.5, "additional_per_kg": 50.0, "remote_surcharge": 50.0},
+}
+
+REMOTE_AREAS: Dict[str, Dict] = {
+    "新疆": {"name": "新疆", "surcharge": 20.0, "zone": "新疆西藏"},
+    "西藏": {"name": "西藏", "surcharge": 25.0, "zone": "新疆西藏"},
+    "青海": {"name": "青海", "surcharge": 10.0, "zone": "西北"},
+    "宁夏": {"name": "宁夏", "surcharge": 8.0, "zone": "西北"},
+    "甘肃": {"name": "甘肃", "surcharge": 8.0, "zone": "西北"},
+    "内蒙古": {"name": "内蒙古", "surcharge": 10.0, "zone": "华北"},
+    "海南": {"name": "海南", "surcharge": 5.0, "zone": "华南"},
 }
 
 CITY_TO_ZONE: Dict[str, str] = {
@@ -98,6 +108,31 @@ class ShippingCalculator:
                 return zone
         return None
 
+    def get_remote_surcharge(self, destination: str, zone: str) -> Dict:
+        if destination in REMOTE_AREAS:
+            area = REMOTE_AREAS[destination]
+            return {
+                "is_remote": True,
+                "remote_area": area["name"],
+                "surcharge": area["surcharge"],
+                "surcharge_type": "省级偏远地区",
+            }
+        zone_rate = ZONE_RATES.get(zone, {})
+        zone_surcharge = zone_rate.get("remote_surcharge", 0.0)
+        if zone_surcharge > 0:
+            return {
+                "is_remote": True,
+                "remote_area": zone,
+                "surcharge": zone_surcharge,
+                "surcharge_type": "区域偏远附加费",
+            }
+        return {
+            "is_remote": False,
+            "remote_area": None,
+            "surcharge": 0.0,
+            "surcharge_type": None,
+        }
+
     def calculate(
         self,
         destination: str,
@@ -120,15 +155,18 @@ class ShippingCalculator:
         additional_per_kg = rates["additional_per_kg"]
 
         if chargeable_w <= first_kg:
-            total_cost = first_weight_cost
+            base_cost = first_weight_cost
         else:
             remaining_kg = chargeable_w - first_kg
             additional_units = remaining_kg / 0.5 if zone == "港澳台" or zone.startswith("国际") else remaining_kg
             additional_units = math.ceil(additional_units)
             unit_weight = 0.5 if zone == "港澳台" or zone.startswith("国际") else 1.0
-            total_cost = first_weight_cost + additional_units * additional_per_kg * unit_weight
+            base_cost = first_weight_cost + additional_units * additional_per_kg * unit_weight
 
-        total_cost = round(total_cost, 2)
+        remote_info = self.get_remote_surcharge(destination, zone)
+        remote_surcharge = remote_info["surcharge"]
+        total_cost = round(base_cost + remote_surcharge, 2)
+        base_cost = round(base_cost, 2)
 
         return {
             "company": self.company,
@@ -149,6 +187,12 @@ class ShippingCalculator:
                 "first_kg": first_kg,
                 "additional_per_kg": additional_per_kg,
             },
+            "remote": remote_info,
+            "cost_breakdown": {
+                "base_cost": base_cost,
+                "remote_surcharge": remote_surcharge,
+                "total_cost": total_cost,
+            },
             "total_cost": total_cost,
         }
 
@@ -158,6 +202,9 @@ def main():
         ("上海", 30, 20, 10, 2),
         ("北京", 50, 40, 30, 3),
         ("新疆", 40, 30, 25, 5),
+        ("西藏", 40, 30, 25, 5),
+        ("青海", 35, 25, 20, 3),
+        ("内蒙古", 45, 35, 25, 4),
         ("香港", 25, 20, 15, 1.2),
         ("国际-欧美", 60, 40, 30, 8),
         ("本地", 20, 15, 10, 0.8),
@@ -167,12 +214,39 @@ def main():
     print("快递运费计算服务 - 示例")
     print("=" * 80)
 
-    print(f"\n{'='*40}")
+    print(f"\n{'='*50}")
+    print("偏远地区附加费对比 (顺丰)")
+    print(f"{'='*50}")
+    remote_examples = [
+        ("新疆", 40, 30, 25, 5),
+        ("西藏", 40, 30, 25, 5),
+        ("青海", 35, 25, 20, 3),
+        ("宁夏", 30, 20, 15, 2),
+        ("甘肃", 35, 25, 20, 3),
+        ("内蒙古", 45, 35, 25, 4),
+        ("海南", 30, 20, 15, 2),
+        ("上海", 30, 20, 10, 2),
+    ]
+    calc_sf = ShippingCalculator.for_company("顺丰")
+    for dest, l, w, h, wt in remote_examples:
+        result = calc_sf.calculate(dest, l, w, h, wt)
+        remote = result["remote"]
+        cb = result["cost_breakdown"]
+        if remote["is_remote"]:
+            print(f"\n{dest} ({remote['surcharge_type']}):")
+            print(f"  基础运费: ¥{cb['base_cost']}")
+            print(f"  偏远附加费: +¥{cb['remote_surcharge']} ({remote['remote_area']})")
+            print(f"  总计: ¥{cb['total_cost']}")
+        else:
+            print(f"\n{dest}: 非偏远地区，运费 ¥{cb['total_cost']}")
+
+    print(f"\n{'='*50}")
     print("对比: 顺丰 vs 德邦 (体积重系数差异)")
-    print(f"{'='*40}")
+    print(f"{'='*50}")
     compare_cases = [
         (50, 40, 30, 3, "北京"),
         (60, 50, 40, 8, "上海"),
+        (40, 30, 25, 5, "新疆"),
     ]
     for l, w, h, wt, dest in compare_cases:
         print(f"\n包裹: {l}×{w}×{h} cm, 实际重量 {wt} kg, 目的地 {dest}")
@@ -183,22 +257,30 @@ def main():
             vf = result["volume_factor"]
             vw = result["package"]["volume_weight_kg"]
             cw = result["package"]["chargeable_weight_kg"]
-            print(f"  {company_name}(系数{vf}): 体积重={vw}kg, 计费重={cw}kg, 运费=¥{result['total_cost']}")
+            remote = result["remote"]
+            remote_tag = f", 偏远+¥{remote['surcharge']}" if remote["is_remote"] else ""
+            print(f"  {company_name}(系数{vf}): 体积重={vw}kg, 计费重={cw}kg, 运费=¥{result['total_cost']}{remote_tag}")
 
     for company_name in ["顺丰", "德邦"]:
-        print(f"\n{'='*40}")
+        print(f"\n{'='*50}")
         print(f"快递公司: {company_name} (体积重系数: {EXPRESS_COMPANIES[company_name]['volume_factor']})")
-        print(f"{'='*40}")
+        print(f"{'='*50}")
         calc = ShippingCalculator.for_company(company_name)
         for dest, l, w, h, wt in examples:
             try:
                 result = calc.calculate(dest, l, w, h, wt)
+                remote = result["remote"]
+                cb = result["cost_breakdown"]
                 print(f"\n目的地: {dest}  |  区域: {result['zone']}")
                 print(f"  尺寸: {l}×{w}×{h} cm  |  体积: {l*w*h:.0f} cm³")
                 print(f"  实际重量: {wt} kg  |  体积重: {result['package']['volume_weight_kg']} kg")
                 print(f"  计费重量: {result['package']['chargeable_weight_kg']} kg")
                 print(f"  首重: {result['rate']['first_weight']}元/{result['rate']['first_kg']}kg  |  续重: {result['rate']['additional_per_kg']}元/kg")
-                print(f"  总运费: ¥{result['total_cost']}")
+                if remote["is_remote"]:
+                    print(f"  偏远地区: 是 ({remote['remote_area']}, {remote['surcharge_type']})")
+                    print(f"  费用明细: 基础 ¥{cb['base_cost']} + 偏远附加费 ¥{cb['remote_surcharge']} = ¥{cb['total_cost']}")
+                else:
+                    print(f"  总运费: ¥{result['total_cost']}")
             except ValueError as e:
                 print(f"\n目的地: {dest} - 错误: {e}")
 
